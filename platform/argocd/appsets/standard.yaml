@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenants-standard
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - tenant: hanica
+          - tenant: oke
+  template:
+    metadata:
+      name: '{{ .tenant }}'
+      labels:
+        smarthr.io/tenant: '{{ .tenant }}'
+        smarthr.io/cluster-flavor: standard
+    spec:
+      project: '{{ .tenant }}'
+      source:
+        repoURL: https://github.com/tayzar-tznw/gke-argocd.git
+        targetRevision: main
+        path: 'tenants/{{ .tenant }}/overlays/standard'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .tenant }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: hanica
+  labels:
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: hanica
+spec:
+  selector:
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: hanica
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsukekae
+  namespace: hanica
+spec:
+  selector:
+    app.kubernetes.io/name: tsukekae
+    app.kubernetes.io/part-of: hanica
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP

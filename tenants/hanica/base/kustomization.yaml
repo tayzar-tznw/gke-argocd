@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hanica
+
+commonLabels:
+  smarthr.io/tenant: hanica
+
+resources:
+  - serviceaccount.yaml
+  - deployment-app.yaml
+  - deployment-tsukekae.yaml
+  - deployment-worker.yaml
+  - deployment-io-heavy-worker.yaml
+  - deployment-1-thread-worker.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+
+images:
+  - name: nginxinc/nginx-unprivileged
+    newName: nginxinc/nginx-unprivileged
+    newTag: 1.27-alpine

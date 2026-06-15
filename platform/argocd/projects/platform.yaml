@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform-level apps (cluster bootstrap, network policies, quotas)
+  sourceRepos:
+    - https://github.com/tayzar-tznw/gke-argocd.git
+  destinations:
+    - namespace: "*"
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: "networking.k8s.io"
+      kind: "*"
+    - group: "rbac.authorization.k8s.io"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: "networking.k8s.io"
+      kind: "*"
+    - group: "rbac.authorization.k8s.io"
+      kind: "*"

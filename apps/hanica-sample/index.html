@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>hanica (demo placeholder)</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; padding: 2rem; max-width: 36rem; margin: auto; }
+    h1 { font-weight: 600; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    .meta { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>hanica — GKE demo placeholder</h1>
+  <p>This is a placeholder for the SmartHR <strong>hanica</strong> web tier in the
+     Cloud Run → GKE migration demo.</p>
+  <p class="meta">
+    Build SHA: <code>__BUILD_SHA__</code><br>
+    Built at: <code>__BUILD_TIME__</code>
+  </p>
+  <p>Editing <code>apps/hanica-sample/index.html</code> on <code>main</code> triggers
+     the CI workflow, which rebuilds this image, pushes to Artifact Registry,
+     and bumps the image tag in the GitOps manifests. ArgoCD then syncs the
+     new image into both clusters.</p>
+</body>
+</html>

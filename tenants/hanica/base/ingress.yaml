@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hanica
+  namespace: hanica
+  annotations:
+    # GKE's external LB ingress controller — creates Cloud LB + Zonal NEG → Pod.
+    # This is the To-Be diagram's "Cloud Load Balancing → Zonal NEG → GKE Deployment".
+    kubernetes.io/ingress.class: "gce"
+spec:
+  defaultBackend:
+    service:
+      name: app
+      port:
+        number: 80
+  rules:
+    - host: hanica.demo.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 80

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Autopilot overlay: no node pool steering (Autopilot manages nodes implicitly).
+# Same base as standard — the demo's point is that the workload manifests are
+# portable across cluster flavors.
+
+resources:
+  - ../../base
+
+commonAnnotations:
+  smarthr.io/cluster-flavor: autopilot

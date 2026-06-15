@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: oke
+spec:
+  selector:
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: oke
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsukekae
+  namespace: oke
+spec:
+  selector:
+    app.kubernetes.io/name: tsukekae
+    app.kubernetes.io/part-of: oke
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signing-path-function
+  namespace: oke
+spec:
+  selector:
+    app.kubernetes.io/name: signing-path-function
+    app.kubernetes.io/part-of: oke
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP

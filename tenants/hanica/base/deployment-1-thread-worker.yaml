@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: one-thread-worker
+  namespace: hanica
+  labels:
+    app.kubernetes.io/name: one-thread-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: hanica
+    workload-class: serial
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: one-thread-worker
+      app.kubernetes.io/part-of: hanica
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: one-thread-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: hanica
+        workload-class: serial
+    spec:
+      serviceAccountName: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: one-thread-worker
+          # Diagram says "1-thread-worker" — stays at replicas=1 by design
+          # (serial work that doesn't fan out). In Rails world this is a single-process
+          # Sidekiq with concurrency: 1.
+          image: busybox:1.37
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo "[1-thread] $(date -u +%FT%TZ) processing serial job"
+                sleep 20
+              done
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

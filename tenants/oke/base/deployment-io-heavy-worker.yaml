@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: io-heavy-worker
+  namespace: oke
+  labels:
+    app.kubernetes.io/name: io-heavy-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: oke
+    workload-class: io-heavy
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: io-heavy-worker
+      app.kubernetes.io/part-of: oke
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: io-heavy-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: oke
+        workload-class: io-heavy
+    spec:
+      serviceAccountName: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: redis:7-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              QUEUE=io-heavy-queue
+              while true; do
+                ITEM=$(redis-cli -h redis.oke.svc.cluster.local LPOP $QUEUE)
+                if [ -n "$ITEM" ]; then
+                  echo "[oke-io-heavy] heavy job $ITEM"
+                  sleep 5
+                else
+                  sleep 2
+                fi
+              done
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {cpu: 1000m, memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

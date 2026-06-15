@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Installs Argo CD v3.4.3 into the argocd namespace.
+# The upstream install.yaml is namespace-scoped to `argocd`.
+
+namespace: argocd
+
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.3/manifests/install.yaml
+
+# Patch argocd-server to use insecure mode (no TLS termination) so we can
+# reach the UI through `kubectl port-forward` without cert wrangling.
+# For production, leave this off and front Argo CD with a Gateway/Ingress that does TLS.
+patches:
+  - target:
+      kind: Deployment
+      name: argocd-server
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --insecure

@@ -1,0 +1,125 @@
+# KEDA ScaledObjects for oke workers.
+# - Queue-driven workers use the `redis` scaler against an in-cluster Redis list.
+# - mailer-worker and cert-update-worker use the `cron` scaler to model the
+#   "predictable spike usage" pattern called out in project.md (payroll/HR cycles).
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: document-build-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: document-build-worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.oke.svc.cluster.local:6379
+        listName: document-build-queue
+        listLength: "5"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notifier-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: notifier-worker
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.oke.svc.cluster.local:6379
+        listName: notifier-queue
+        listLength: "10"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: io-heavy-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: io-heavy-worker
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.oke.svc.cluster.local:6379
+        listName: io-heavy-queue
+        listLength: "3"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: document-download-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: document-download-worker
+  minReplicaCount: 0
+  maxReplicaCount: 8
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.oke.svc.cluster.local:6379
+        listName: document-download-queue
+        listLength: "5"
+---
+# Cron-scaled: scale up at predictable times (e.g. payroll dispatch window),
+# scale back to 0 outside the window. Replace these times with the actual SmartHR
+# business cycle when productionizing.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mailer-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: mailer-worker
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  pollingInterval: 30
+  cooldownPeriod: 60
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Asia/Tokyo
+        # Up at the top of every hour for 10 minutes — demo-friendly cadence.
+        start: "0 * * * *"
+        end:   "10 * * * *"
+        desiredReplicas: "3"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cert-update-worker
+  namespace: oke
+spec:
+  scaleTargetRef:
+    name: cert-update-worker
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  pollingInterval: 30
+  cooldownPeriod: 120
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Asia/Tokyo
+        # Quick burst every 30 minutes — replace with the real cert-rotation schedule.
+        start: "0,30 * * * *"
+        end:   "5,35 * * * *"
+        desiredReplicas: "1"

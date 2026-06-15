@@ -1,0 +1,115 @@
+name: ci-oke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/oke-sample/**'
+      - '.github/workflows/ci-oke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  PROJECT_ID: smart-hr-demo-499522
+  REGION: asia-northeast1
+  AR_REPO: smarthr-demo
+  IMAGE_NAME: oke
+  WIF_PROVIDER: projects/87614275791/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+  GCP_SA: gh-actions-deployer@smart-hr-demo-499522.iam.gserviceaccount.com
+
+jobs:
+  build-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        name: Compute image tag
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          TAG="${SHA}-${TS}"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Docker auth to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build + push image
+        run: |
+          docker buildx build \
+            --build-arg BUILD_SHA="${GITHUB_SHA::12}" \
+            -t "${{ steps.meta.outputs.image_ref }}" \
+            --push \
+            apps/oke-sample
+
+      # Placeholder: rails db:migrate
+      # Placeholder: rake task — grant readonly env permissions
+      # (matches `[oke] readonly env permission grant via rake` in project.md To-Be).
+      # - name: Grant readonly env permissions
+      #   run: bundle exec rake oke:grant_readonly_env
+
+  deploy:
+    name: Bump image tag + reconcile via ArgoCD
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz \
+            | tar -xz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/
+
+      - name: Bump image tag in both overlays
+        run: |
+          # The oke worker images use redis:7-alpine as the base in the manifests.
+          # In production we'd swap the placeholder image name for the real one.
+          for overlay in tenants/oke/overlays/autopilot tenants/oke/overlays/standard; do
+            ( cd "$overlay" && kustomize edit set image \
+              "redis=${{ needs.build-push.outputs.image_ref }}" )
+          done
+
+      - name: Commit + push manifest change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tenants/oke/overlays/
+          if git diff --cached --quiet; then
+            echo "No manifest changes — image tag was already current."
+            exit 0
+          fi
+          git commit -m "ci(oke): bump image to ${{ needs.build-push.outputs.image_tag }}
+
+          Workflow: ${{ github.workflow }} run ${{ github.run_id }}
+          Source commit: ${{ github.sha }}
+          "
+          git push origin main
+
+      - name: Slack notification (placeholder)
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -fsSL -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\":rocket: oke deployed: ${{ needs.build-push.outputs.image_tag }}\"}"

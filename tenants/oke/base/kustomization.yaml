@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oke
+
+commonLabels:
+  smarthr.io/tenant: oke
+
+resources:
+  - serviceaccount.yaml
+  - redis.yaml
+  - deployment-app.yaml
+  - deployment-tsukekae.yaml
+  - deployment-signing-path-function.yaml
+  - deployment-document-build-worker.yaml
+  - deployment-notifier-worker.yaml
+  - deployment-io-heavy-worker.yaml
+  - deployment-document-download-worker.yaml
+  - deployment-mailer-worker.yaml
+  - deployment-cert-update-worker.yaml
+  - scaledobjects.yaml
+  - service.yaml
+  - ingress.yaml
+
+images:
+  - name: nginxinc/nginx-unprivileged
+    newName: nginxinc/nginx-unprivileged
+    newTag: 1.27-alpine

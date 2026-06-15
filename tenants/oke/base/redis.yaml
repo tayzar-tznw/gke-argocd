@@ -1,0 +1,66 @@
+# In-cluster Redis used as the queue backend for KEDA Redis-list scalers.
+# Production would point at Memorystore (matching the As-Is data plane);
+# this is here only so the demo has a real queue to LPUSH against.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: oke
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: queue
+    app.kubernetes.io/part-of: oke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/part-of: oke
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: queue
+        app.kubernetes.io/part-of: oke
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["--appendonly", "no", "--save", ""]
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "PING"]
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: oke
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: oke
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  type: ClusterIP

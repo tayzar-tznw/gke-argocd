@@ -1,0 +1,137 @@
+name: ci-hanica
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/hanica-sample/**'
+      - '.github/workflows/ci-hanica.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write       # commit the image-tag bump back to the repo
+  id-token: write       # mint a WIF token to talk to GCP
+
+env:
+  PROJECT_ID: smart-hr-demo-499522
+  REGION: asia-northeast1
+  AR_REPO: smarthr-demo
+  IMAGE_NAME: hanica
+  WIF_PROVIDER: projects/87614275791/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+  GCP_SA: gh-actions-deployer@smart-hr-demo-499522.iam.gserviceaccount.com
+
+jobs:
+  build-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Placeholder for the production Rails pipeline. Uncomment in production:
+      # - name: Setup Ruby + bundle install
+      #   uses: ruby/setup-ruby@v1
+      #   with:
+      #     ruby-version: '3.3'
+      #     bundler-cache: true
+      # - name: Setup Node + pnpm asset build
+      #   run: |
+      #     corepack enable
+      #     pnpm install --frozen-lockfile
+      #     pnpm run build
+
+      - id: meta
+        name: Compute image tag
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          TAG="${SHA}-${TS}"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Docker auth to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build + push image
+        run: |
+          docker buildx build \
+            --build-arg BUILD_SHA="${GITHUB_SHA::12}" \
+            --build-arg BUILD_TIME="$(date -u +%FT%TZ)" \
+            -t "${{ steps.meta.outputs.image_ref }}" \
+            --push \
+            apps/hanica-sample
+
+      # Placeholder: upload assets to GCS (mirrors As-Is step in project.md).
+      # - name: Upload assets
+      #   run: gcloud storage cp -r apps/hanica-sample/dist gs://smarthr-hanica-assets/${{ steps.meta.outputs.image_tag }}
+
+      # Placeholder: rails db:migrate (mirrors As-Is step in project.md).
+      # Production would run a Kubernetes Job that exec's the migration.
+
+  deploy:
+    name: Bump image tag + reconcile via ArgoCD
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment: production    # required reviewer gates this job
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz \
+            | tar -xz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/
+
+      - name: Bump image tag in both overlays
+        run: |
+          for overlay in tenants/hanica/overlays/autopilot tenants/hanica/overlays/standard; do
+            ( cd "$overlay" && kustomize edit set image \
+              nginxinc/nginx-unprivileged=${{ needs.build-push.outputs.image_ref }} )
+          done
+
+      - name: Commit + push manifest change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tenants/hanica/overlays/
+          if git diff --cached --quiet; then
+            echo "No manifest changes — image tag was already current."
+            exit 0
+          fi
+          git commit -m "ci(hanica): bump image to ${{ needs.build-push.outputs.image_tag }}
+
+          Workflow: ${{ github.workflow }} run ${{ github.run_id }}
+          Source commit: ${{ github.sha }}
+          "
+          git push origin main
+
+      # Placeholder: GraphQL schema deploy to Apollo Federation
+      # (matches `[hanica] GraphQL schema deploy` in project.md To-Be).
+      # - name: Apollo Federation schema deploy
+      #   run: |
+      #     npx -y rover subgraph publish smarthr-graph@current \
+      #       --schema schema.graphql \
+      #       --name hanica
+      #   env:
+      #     APOLLO_KEY: ${{ secrets.APOLLO_KEY }}
+
+      - name: Slack notification (placeholder)
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -fsSL -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\":rocket: hanica deployed: ${{ needs.build-push.outputs.image_tag }}\"}"
