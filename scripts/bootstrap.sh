@@ -67,7 +67,9 @@ bootstrap_cluster() {
   log "==> Bootstrapping ${ctx} (flavor=${flavor})"
 
   log "Installing Argo CD"
-  kubectl --context "${ctx}" apply -k "${ROOT_DIR}/platform/argocd/install/"
+  # --server-side avoids the "annotations: Too long: may not be more than 262144 bytes"
+  # error on the ArgoCD CRDs (they have very large OpenAPI schemas).
+  kubectl --context "${ctx}" apply -k "${ROOT_DIR}/platform/argocd/install/" --server-side --force-conflicts
   log "Waiting for Argo CD CRDs"
   kubectl --context "${ctx}" wait --for=condition=Established \
     crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io \
@@ -76,7 +78,7 @@ bootstrap_cluster() {
   kubectl --context "${ctx}" -n argocd rollout status deploy/argocd-server --timeout=300s
 
   log "Installing KEDA"
-  kubectl --context "${ctx}" apply -k "${ROOT_DIR}/platform/keda/install/"
+  kubectl --context "${ctx}" apply -k "${ROOT_DIR}/platform/keda/install/" --server-side --force-conflicts
   log "Waiting for KEDA CRDs"
   kubectl --context "${ctx}" wait --for=condition=Established \
     crd/scaledobjects.keda.sh --timeout=120s
