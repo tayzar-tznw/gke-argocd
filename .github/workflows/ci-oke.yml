@@ -80,14 +80,12 @@ jobs:
             | tar -xz -C /tmp
           sudo mv /tmp/kustomize /usr/local/bin/
 
-      - name: Bump image tag in both overlays
+      - name: Bump image tag in the overlay
         run: |
           # The oke worker images use redis:7-alpine as the base in the manifests.
           # In production we'd swap the placeholder image name for the real one.
-          for overlay in tenants/oke/overlays/autopilot tenants/oke/overlays/standard; do
-            ( cd "$overlay" && kustomize edit set image \
-              "redis=${{ needs.build-push.outputs.image_ref }}" )
-          done
+          ( cd tenants/oke/overlays/autopilot && kustomize edit set image \
+            "redis=${{ needs.build-push.outputs.image_ref }}" )
 
       - name: Commit + push manifest change
         run: |

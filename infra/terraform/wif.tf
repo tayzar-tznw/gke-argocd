@@ -83,10 +83,6 @@ resource "google_service_account_iam_member" "hanica_runtime_wi_binding" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[hanica/app]"
 
   # The GKE Workload Identity pool (PROJECT.svc.id.goog) is created lazily by
-  # a cluster with workload_identity_config. Wait for at least one to exist
-  # before binding to it.
-  depends_on = [
-    google_container_cluster.standard,
-    google_container_cluster.autopilot,
-  ]
+  # a cluster with workload_identity_config. Wait for it to exist first.
+  depends_on = [google_container_cluster.autopilot]
 }

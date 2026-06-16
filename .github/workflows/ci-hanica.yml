@@ -94,12 +94,10 @@ jobs:
             | tar -xz -C /tmp
           sudo mv /tmp/kustomize /usr/local/bin/
 
-      - name: Bump image tag in both overlays
+      - name: Bump image tag in the overlay
         run: |
-          for overlay in tenants/hanica/overlays/autopilot tenants/hanica/overlays/standard; do
-            ( cd "$overlay" && kustomize edit set image \
-              nginxinc/nginx-unprivileged=${{ needs.build-push.outputs.image_ref }} )
-          done
+          ( cd tenants/hanica/overlays/autopilot && kustomize edit set image \
+            nginxinc/nginx-unprivileged=${{ needs.build-push.outputs.image_ref }} )
 
       - name: Commit + push manifest change
         run: |

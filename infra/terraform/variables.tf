@@ -10,12 +10,6 @@ variable "region" {
   default     = "asia-northeast1"
 }
 
-variable "zone" {
-  description = "GCP zone for the zonal Standard cluster."
-  type        = string
-  default     = "asia-northeast1-a"
-}
-
 variable "github_repo" {
   description = "GitHub repository in 'owner/name' form. Used by WIF binding."
   type        = string

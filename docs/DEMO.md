@@ -1,6 +1,6 @@
 # Live demo script — SmartHR GKE migration walkthrough
 
-A ~20-minute walkthrough designed for SmartHR engineers. Each section has what to **say**, what to **show**, and what to **run**.
+A ~15-minute walkthrough designed for SmartHR engineers. Each section has what to **say**, what to **show**, and what to **run**.
 
 ## 0. Setup (do this before the meeting starts)
 
@@ -8,24 +8,19 @@ A ~20-minute walkthrough designed for SmartHR engineers. Each section has what t
 ./scripts/bootstrap.sh
 ```
 
-Wait for both clusters to be Ready and ArgoCD to show all Applications **Synced + Healthy**. Confirm with:
+Wait for the cluster to be Ready and ArgoCD to show all Applications **Synced + Healthy**. Confirm with:
 ```bash
-for ctx in gke_smart-hr-demo-499522_asia-northeast1_smarthr-autopilot \
-           gke_smart-hr-demo-499522_asia-northeast1-a_smarthr-standard; do
-  echo "=== $ctx ==="
-  kubectl --context "$ctx" get application -n argocd
-done
+CTX=gke_smart-hr-demo-499522_asia-northeast1_smarthr-autopilot
+kubectl --context "$CTX" get application -n argocd
 ```
 
-Open two browser windows:
-- ArgoCD UI for the Autopilot cluster (port-forward)
-- A second ArgoCD UI for the Standard cluster (different port-forward)
+Open the ArgoCD UI in your browser via port-forward.
 
 ---
 
 ## 1. The diagram, made real (2 min)
 
-**Say**: "The target architecture from `mutitanency.png` is running right now in both clusters. Same manifests, two cluster flavors."
+**Say**: "The target architecture from `mutitanency.png` is running right now in the cluster."
 
 **Show**:
 ```bash
@@ -72,7 +67,7 @@ kubectl -n oke get pods -l app.kubernetes.io/name=document-build-worker
 # (0 pods)
 
 # Push 50 jobs onto the queue
-kubectl -n oke exec -it deploy/redis -- redis-cli RPUSH document-build-queue $(seq 1 50 | tr '\n' ' ')
+kubectl -n oke exec deploy/redis -- redis-cli RPUSH document-build-queue $(seq 1 50 | tr '\n' ' ')
 
 # Watch replicas climb from 0 → N within ~30s
 watch -n2 'kubectl -n oke get pods -l app.kubernetes.io/name=document-build-worker'
@@ -82,46 +77,54 @@ watch -n2 'kubectl -n oke get pods -l app.kubernetes.io/name=document-build-work
 ```bash
 kubectl -n oke get scaledobject mailer-worker -o yaml | grep -A5 triggers
 ```
-Point out: scales up at `:00`, back down at `:10`, every hour. Replaces this with the real payroll dispatch window when productionizing.
+Point out: scales up at `:00`, back down at `:10`, every hour. Replace with the real payroll dispatch window when productionizing.
 
 **Say**: "Cloud Run's min-instances would have these warm 24/7. KEDA makes them zero-cost when idle and ready before the spike."
 
 ---
 
-## 4. Autopilot vs Standard, same workload (4 min)
+## 4. Why Autopilot (1 min)
 
-**Say**: "Same manifests, two clusters. The point isn't to pick — it's to show you can pick per-workload."
+**Say**: "We picked Autopilot for both services. The decision rationale is in `docs/WHY_AUTOPILOT.md` — the short version is: SmartHR's workloads don't need the node-pool isolation or pod-spec freedom that Standard buys you, and Autopilot's pay-per-pod-request model is the smallest mental shift from Cloud Run."
 
-**Show in Standard's ArgoCD UI**: open the `oke` Application, find `io-heavy-worker`. Click into the pod, show:
-- Node it landed on (`io-heavy-pool-xxx`)
-- Toleration `workload=io-heavy:NoSchedule`
-- `nodeSelector: pool: io-heavy`
-
+**Show**: the cluster has no nodes for you to manage:
 ```bash
-kubectl --context $STD_CTX -n oke get pods -l app.kubernetes.io/name=io-heavy-worker -o wide
-kubectl --context $STD_CTX get nodes -l pool=io-heavy
+gcloud container clusters describe smarthr-autopilot --region asia-northeast1 \
+  --format='value(autopilot.enabled)'
 ```
-
-**Show in Autopilot**: same Deployment, no node selector — Google picks the node class.
-
-```bash
-kubectl --context $AP_CTX -n oke get pods -l app.kubernetes.io/name=io-heavy-worker -o wide
-```
-
-**Say**: "Standard gives you the knob. Autopilot saves you from needing one. The recommendation in `docs/AUTOPILOT_VS_STANDARD.md` is: start `hanica` on Autopilot, consider Standard for `oke` when burst economics matter."
 
 ---
 
 ## 5. Tenant isolation is enforced, not aspirational (2 min)
 
 ```bash
-# Cross-tenant traffic is denied by NetworkPolicy:
-kubectl -n hanica run debug --rm -it --image=alpine -- \
-  sh -c 'apk add curl && curl -m 5 http://app.oke.svc.cluster.local || echo BLOCKED'
+# Cross-tenant traffic is denied by NetworkPolicy (uses a properly-secured test pod):
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata: { name: netpol-test, namespace: hanica }
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: test
+      image: busybox:1.37
+      command: ["sh","-c","sleep 600"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: { drop: ["ALL"] }
+EOF
 
-# Same-namespace traffic works:
-kubectl -n hanica run debug --rm -it --image=alpine -- \
-  sh -c 'apk add curl && curl -m 5 http://app.hanica.svc.cluster.local && echo OK'
+# Cross-tenant: BLOCKED
+kubectl -n hanica exec netpol-test -- sh -c 'timeout 5 wget -qO- http://app.oke.svc.cluster.local/ ; echo exit=$?'
+
+# Same-namespace: WORKS
+kubectl -n hanica exec netpol-test -- sh -c 'timeout 5 wget -qO- http://app.hanica.svc.cluster.local/ | grep -i title'
+
+kubectl -n hanica delete pod netpol-test --wait=false
 ```
 
 ```bash
@@ -142,7 +145,6 @@ kubectl -n argocd get appproject -o yaml | grep -A3 destinations
 **Say**: "GKE cost allocation is on. Per-namespace spend lands in BigQuery."
 
 ```bash
-# Show the cluster config:
 gcloud container clusters describe smarthr-autopilot --region asia-northeast1 \
   --format='value(costManagementConfig.enabled)'
 ```
@@ -157,4 +159,4 @@ Show BigQuery dataset (post-demo): the `gke_namespace_cost` view aggregates by n
 ./scripts/teardown.sh
 ```
 
-Walks through the prompts. Roughly $0.45/hour stops when the script completes.
+Walks through the prompts. Roughly $0.40–0.60/hour stops when the script completes.

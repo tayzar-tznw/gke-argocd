@@ -10,9 +10,7 @@ TF_DIR="${ROOT_DIR}/infra/terraform"
 
 PROJECT_ID="${PROJECT_ID:-smart-hr-demo-499522}"
 REGION="${REGION:-asia-northeast1}"
-ZONE="${ZONE:-asia-northeast1-a}"
 AUTOPILOT_CLUSTER="${AUTOPILOT_CLUSTER:-smarthr-autopilot}"
-STANDARD_CLUSTER="${STANDARD_CLUSTER:-smarthr-standard}"
 
 log() { printf '\033[1;34m[teardown]\033[0m %s\n' "$*"; }
 
@@ -23,14 +21,10 @@ if [[ "${confirm}" != "destroy" ]]; then
 fi
 
 # Best-effort delete of ApplicationSets — keeps prune from creating ghosts.
-for cluster_info in "${AUTOPILOT_CLUSTER}:${REGION}" "${STANDARD_CLUSTER}:${ZONE}"; do
-  cluster="${cluster_info%%:*}"
-  loc="${cluster_info##*:}"
-  log "Trying to clean ApplicationSets on ${cluster}…"
-  if gcloud container clusters get-credentials "${cluster}" --location "${loc}" --project "${PROJECT_ID}" 2>/dev/null; then
-    kubectl delete applicationset --all -n argocd --ignore-not-found --wait=false || true
-  fi
-done
+log "Trying to clean ApplicationSets on ${AUTOPILOT_CLUSTER}…"
+if gcloud container clusters get-credentials "${AUTOPILOT_CLUSTER}" --region "${REGION}" --project "${PROJECT_ID}" 2>/dev/null; then
+  kubectl delete applicationset --all -n argocd --ignore-not-found --wait=false || true
+fi
 
 log "terraform destroy…"
 ( cd "${TF_DIR}" && terraform destroy -auto-approve )

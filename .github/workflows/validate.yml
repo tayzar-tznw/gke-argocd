@@ -23,9 +23,7 @@ jobs:
           set -euo pipefail
           for overlay in \
               tenants/hanica/overlays/autopilot \
-              tenants/hanica/overlays/standard \
               tenants/oke/overlays/autopilot \
-              tenants/oke/overlays/standard \
               platform/cluster-bootstrap; do
             echo "==> Validating $overlay"
             kubectl kustomize "$overlay" | kubeconform \

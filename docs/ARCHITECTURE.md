@@ -7,7 +7,6 @@ Each element in `mutitanency.png` and the To-Be diagrams in `project.md` maps to
 | Diagram element | File(s) |
 |---|---|
 | GKE cluster (Autopilot) | `infra/terraform/gke.tf` → `google_container_cluster.autopilot` |
-| GKE cluster (Standard) | `infra/terraform/gke.tf` → `google_container_cluster.standard` + node pools |
 | VPC + Cloud NAT | `infra/terraform/vpc.tf` |
 | Artifact Registry | `infra/terraform/artifact_registry.tf` |
 | Workload Identity Federation (GitHub → GCP) | `infra/terraform/wif.tf` |
@@ -27,7 +26,7 @@ Supporting:
 - Service + Ingress: `tenants/hanica/base/{service,ingress}.yaml`
 - HPA on `app`: `tenants/hanica/base/hpa.yaml`
 - KSA for Workload Identity: `tenants/hanica/base/serviceaccount.yaml`
-- Per-cluster overrides: `tenants/hanica/overlays/{standard,autopilot}/`
+- Overlay (per-env overrides land here): `tenants/hanica/overlays/autopilot/`
 
 ## Namespace: oke (`mutitanency.png`)
 
@@ -47,7 +46,7 @@ Supporting:
 - All ScaledObjects: `tenants/oke/base/scaledobjects.yaml`
 - In-cluster Redis (queue backend for the demo): `tenants/oke/base/redis.yaml`
 - Service + Ingress: `tenants/oke/base/{service,ingress}.yaml`
-- Per-cluster overrides: `tenants/oke/overlays/{standard,autopilot}/`
+- Overlay: `tenants/oke/overlays/autopilot/`
 
 ## Namespace: argocd
 
@@ -57,7 +56,7 @@ Installed from upstream Argo CD v3.4.3 manifests via `platform/argocd/install/ku
 - `argocd-application-controller` (StatefulSet)
 - `argocd-redis`
 - AppProjects: `platform/argocd/projects/{hanica,oke,platform}.yaml`
-- ApplicationSets (per cluster): `platform/argocd/appsets/{autopilot,standard}.yaml`
+- ApplicationSet: `platform/argocd/appsets/autopilot.yaml`
 
 ## Namespace: keda
 
@@ -75,7 +74,7 @@ Installed from upstream KEDA v2.20.1 manifest via `platform/keda/install/kustomi
 | oke: build + push + readonly-perms stub + tag bump + Slack | `.github/workflows/ci-oke.yml` |
 | Sample Dockerfile (hanica) | `apps/hanica-sample/Dockerfile` |
 | Sample Dockerfile (oke worker) | `apps/oke-sample/Dockerfile` |
-| Image-tag bump target | `tenants/{hanica,oke}/overlays/*/kustomization.yaml` (the `images:` block) |
+| Image-tag bump target | `tenants/{hanica,oke}/overlays/autopilot/kustomization.yaml` (the `images:` block) |
 | Manual approval gate | GitHub Environment `production` with required reviewer |
 
 ## Multi-tenancy primitives

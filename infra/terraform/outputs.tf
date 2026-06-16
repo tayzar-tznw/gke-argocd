@@ -15,15 +15,6 @@ output "autopilot_cluster_endpoint" {
   sensitive = true
 }
 
-output "standard_cluster_name" {
-  value = google_container_cluster.standard.name
-}
-
-output "standard_cluster_endpoint" {
-  value     = google_container_cluster.standard.endpoint
-  sensitive = true
-}
-
 output "artifact_registry_url" {
   value = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.smarthr_demo.repository_id}"
 }
