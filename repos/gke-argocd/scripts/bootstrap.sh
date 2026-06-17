@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 # Bootstrap the SmartHR GKE demo end-to-end.
 #
-# Steps:
-#   1. enable required GCP APIs
-#   2. terraform apply (VPC, Artifact Registry, Autopilot cluster, WIF)
-#   3. fetch credentials
-#   4. install ArgoCD + KEDA + cluster bootstrap manifests
-#   5. apply ApplicationSet so ArgoCD takes over reconciliation
+# In real life:
+#   - `terraform apply` is run from the smarthr-terraform repo's CD pipeline,
+#     not from this script. It creates the GCP infra (VPC, AR, GKE cluster, WIF).
+#   - This bootstrap script lives in the gke-argocd repo and only installs the
+#     in-cluster pieces (ArgoCD, KEDA, namespaces, ApplicationSet).
+#
+# For the all-in-one demo, this script does BOTH so you can stand the whole
+# thing up with one command. The terraform step is clearly marked.
 #
 # Idempotent — safe to re-run.
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${ROOT_DIR}/infra/terraform"
+# REPO_ROOT = the top of the gitops repo (one level above this gke-argocd subdir)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+GKE_ARGOCD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${GKE_ARGOCD_DIR}/../.." && pwd)"
+TF_DIR="${REPO_ROOT}/repos/smarthr-terraform/environments/smarthr-gke-demo"
 
 PROJECT_ID="${PROJECT_ID:-smart-hr-demo-499522}"
 REGION="${REGION:-asia-northeast1}"
@@ -43,8 +48,8 @@ gcloud services enable \
   sts.googleapis.com \
   --project="${PROJECT_ID}"
 
-# --- 2. terraform apply ---
-log "terraform init…"
+# --- 2. terraform apply (lives in smarthr-terraform/ in real life) ---
+log "terraform init (state in GCS bucket smarthr-gke-tfstate-87614275791)…"
 ( cd "${TF_DIR}" && terraform init -input=false )
 
 log "terraform apply… (~7 minutes for the Autopilot cluster)"
@@ -55,13 +60,13 @@ log "Fetching cluster credentials"
 gcloud container clusters get-credentials "${AUTOPILOT_CLUSTER}" --region "${REGION}"
 CTX="gke_${PROJECT_ID}_${REGION}_${AUTOPILOT_CLUSTER}"
 
-# --- 4-5. bootstrap the cluster ---
+# --- 4-5. bootstrap the cluster (this is what lives in the gke-argocd repo) ---
 log "==> Bootstrapping ${CTX}"
 
 log "Installing Argo CD"
 # --server-side avoids the "annotations: Too long: may not be more than 262144 bytes"
 # error on the ArgoCD CRDs (they have very large OpenAPI schemas).
-kubectl --context "${CTX}" apply -k "${ROOT_DIR}/platform/argocd/install/" --server-side --force-conflicts
+kubectl --context "${CTX}" apply -k "${GKE_ARGOCD_DIR}/platform/argocd/install/" --server-side --force-conflicts
 log "Waiting for Argo CD CRDs"
 kubectl --context "${CTX}" wait --for=condition=Established \
   crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io \
@@ -70,7 +75,7 @@ log "Waiting for argocd-server"
 kubectl --context "${CTX}" -n argocd rollout status deploy/argocd-server --timeout=300s
 
 log "Installing KEDA"
-kubectl --context "${CTX}" apply -k "${ROOT_DIR}/platform/keda/install/" --server-side --force-conflicts
+kubectl --context "${CTX}" apply -k "${GKE_ARGOCD_DIR}/platform/keda/install/" --server-side --force-conflicts
 log "Waiting for KEDA CRDs"
 kubectl --context "${CTX}" wait --for=condition=Established \
   crd/scaledobjects.keda.sh --timeout=120s
@@ -78,13 +83,13 @@ log "Waiting for KEDA operator"
 kubectl --context "${CTX}" -n keda rollout status deploy/keda-operator --timeout=300s
 
 log "Applying tenant namespaces, quotas, network policies"
-kubectl --context "${CTX}" apply -k "${ROOT_DIR}/platform/cluster-bootstrap/"
+kubectl --context "${CTX}" apply -k "${GKE_ARGOCD_DIR}/platform/cluster-bootstrap/"
 
 log "Applying Argo CD AppProjects"
-kubectl --context "${CTX}" apply -f "${ROOT_DIR}/platform/argocd/projects/"
+kubectl --context "${CTX}" apply -f "${GKE_ARGOCD_DIR}/platform/argocd/projects/"
 
 log "Applying ApplicationSet"
-kubectl --context "${CTX}" apply -f "${ROOT_DIR}/platform/argocd/appsets/autopilot.yaml"
+kubectl --context "${CTX}" apply -f "${GKE_ARGOCD_DIR}/platform/argocd/appsets/autopilot.yaml"
 
 log "Bootstrap complete. Argo CD will now reconcile tenant workloads from git."
 

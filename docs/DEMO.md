@@ -5,8 +5,16 @@ A ~15-minute walkthrough designed for SmartHR engineers. Each section has what t
 ## 0. Setup (do this before the meeting starts)
 
 ```bash
-./scripts/bootstrap.sh
+./repos/gke-argocd/scripts/bootstrap.sh
 ```
+
+Before opening section 1, **show the repo layout** for 30 seconds:
+
+```bash
+tree repos -L 2
+```
+
+Explain: "This single demo repo simulates SmartHR's intended 4-repo split. `repos/hanica/`, `repos/oke/`, `repos/smarthr-terraform/`, `repos/gke-argocd/` — each subdir is one of the repos you'd have. See `docs/MULTI_REPO_LAYOUT.md`."
 
 Wait for the cluster to be Ready and ArgoCD to show all Applications **Synced + Healthy**. Confirm with:
 ```bash
@@ -40,7 +48,7 @@ Point out: all five `hanica` Deployments and all nine `oke` Deployments match th
 **Run**:
 ```bash
 # Edit one line of the placeholder index.html
-sed -i 's|hanica — GKE demo placeholder|hanica — DEMO IS LIVE|' apps/hanica-sample/index.html
+sed -i 's|hanica — GKE demo placeholder|hanica — DEMO IS LIVE|' repos/hanica/index.html
 git commit -am "demo: live update"
 git push
 ```
@@ -48,9 +56,11 @@ git push
 **Show**:
 1. The `ci-hanica` workflow run in GitHub Actions (build, push to AR, the required-reviewer gate).
 2. Approve the gate.
-3. The follow-up commit by `github-actions[bot]` bumping the image tag in the overlay kustomization.
+3. The follow-up commit by `github-actions[bot]` bumping the image tag in `repos/gke-argocd/tenants/hanica/overlays/autopilot/kustomization.yaml`.
 4. In the ArgoCD UI: the hanica Application picks up the new commit and starts syncing.
 5. Once Synced: `curl http://<LB-IP>/` shows the new HTML.
+
+> **Aside** (30s): In real life this PR would be opened against the separate `smarthr/gke-argocd` repo by the `smarthr/hanica` CI workflow (see `repos/hanica/.github/workflows/ci.yml` for that shape, or `docs/MULTI_REPO_LAYOUT.md` for why).
 
 **Say**: "Same flow for `oke`. The CI build is service-specific, the rest is identical."
 
@@ -156,7 +166,7 @@ Show BigQuery dataset (post-demo): the `gke_namespace_cost` view aggregates by n
 ## 7. Teardown (live) (1 min)
 
 ```bash
-./scripts/teardown.sh
+./repos/gke-argocd/scripts/teardown.sh
 ```
 
 Walks through the prompts. Roughly $0.40–0.60/hour stops when the script completes.

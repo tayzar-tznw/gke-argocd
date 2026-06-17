@@ -22,7 +22,11 @@ spec:
       source:
         repoURL: https://github.com/tayzar-tznw/gke-argocd.git
         targetRevision: main
-        path: 'tenants/{{ .tenant }}/overlays/autopilot'
+        # In real life (separate gke-argocd repo) this is just
+        # `tenants/{{ .tenant }}/overlays/autopilot`. The `repos/gke-argocd/`
+        # prefix exists only because this demo nests the four real-life repos
+        # under repos/ to show them side-by-side. See docs/MULTI_REPO_LAYOUT.md.
+        path: 'repos/gke-argocd/tenants/{{ .tenant }}/overlays/autopilot'
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{ .tenant }}'

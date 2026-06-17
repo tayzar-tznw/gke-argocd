@@ -1,0 +1,79 @@
+# ========================================================================
+# ILLUSTRATIVE — does not execute in this demo.
+#
+# This file shows the `terraform apply` workflow that runs on every merge
+# to `main` in the real `smarthr/smarthr-terraform` repo. It applies only
+# the environments touched by the merged commit, gated by a GitHub
+# Environment with a required reviewer.
+# ========================================================================
+name: terraform-apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Environment dir under environments/ to apply (manual run)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: '1.15.3'
+  WIF_PROVIDER: projects/87614275791/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+  GCP_SA: gh-actions-deployer@smart-hr-demo-499522.iam.gserviceaccount.com
+
+jobs:
+  detect-changed-envs:
+    name: Detect changed environments
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.detect.outputs.envs }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2 }
+      - id: detect
+        run: |
+          if [[ -n "${{ inputs.env }}" ]]; then
+            echo "envs=[\"${{ inputs.env }}\"]" >> "$GITHUB_OUTPUT"
+          else
+            changed=$(git diff --name-only HEAD~1...HEAD \
+                      | awk -F/ '/^environments\// {print $2}' \
+                      | sort -u | jq -Rsc 'split("\n")|map(select(.!=""))')
+            echo "envs=${changed}" >> "$GITHUB_OUTPUT"
+          fi
+
+  apply:
+    name: terraform apply (${{ matrix.env }})
+    needs: detect-changed-envs
+    if: ${{ needs.detect-changed-envs.outputs.envs != '[]' }}
+    runs-on: ubuntu-latest
+    environment: production    # required-reviewer gates the apply
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJson(needs.detect-changed-envs.outputs.envs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform init
+        working-directory: environments/${{ matrix.env }}
+        run: terraform init -input=false
+
+      - name: terraform apply
+        working-directory: environments/${{ matrix.env }}
+        run: terraform apply -auto-approve -input=false

@@ -1,10 +1,15 @@
+# NOTE: This is the demo's REAL operational workflow — it runs.
+# In SmartHR's real-life setup, this file lives in a separate repo
+# (`smarthr/hanica`) and opens a cross-repo PR to the gke-argocd repo.
+# See `repos/hanica/.github/workflows/ci.yml` for that real-life shape
+# and `docs/MULTI_REPO_LAYOUT.md` for why this demo has both.
 name: ci-hanica
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/hanica-sample/**'
+      - 'repos/hanica/**'
       - '.github/workflows/ci-hanica.yml'
   workflow_dispatch:
 
@@ -68,7 +73,7 @@ jobs:
             --build-arg BUILD_TIME="$(date -u +%FT%TZ)" \
             -t "${{ steps.meta.outputs.image_ref }}" \
             --push \
-            apps/hanica-sample
+            repos/hanica
 
       # Placeholder: upload assets to GCS (mirrors As-Is step in project.md).
       # - name: Upload assets
@@ -96,14 +101,14 @@ jobs:
 
       - name: Bump image tag in the overlay
         run: |
-          ( cd tenants/hanica/overlays/autopilot && kustomize edit set image \
+          ( cd repos/gke-argocd/tenants/hanica/overlays/autopilot && kustomize edit set image \
             nginxinc/nginx-unprivileged=${{ needs.build-push.outputs.image_ref }} )
 
       - name: Commit + push manifest change
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tenants/hanica/overlays/
+          git add repos/gke-argocd/tenants/hanica/overlays/
           if git diff --cached --quiet; then
             echo "No manifest changes — image tag was already current."
             exit 0

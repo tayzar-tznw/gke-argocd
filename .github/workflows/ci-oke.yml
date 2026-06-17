@@ -1,10 +1,14 @@
+# NOTE: This is the demo's REAL operational workflow — it runs.
+# In SmartHR's real-life setup, this file lives in a separate repo
+# (`smarthr/oke`) and opens a cross-repo PR to the gke-argocd repo.
+# See `repos/oke/.github/workflows/ci.yml` for that real-life shape.
 name: ci-oke
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/oke-sample/**'
+      - 'repos/oke/**'
       - '.github/workflows/ci-oke.yml'
   workflow_dispatch:
 
@@ -55,7 +59,7 @@ jobs:
             --build-arg BUILD_SHA="${GITHUB_SHA::12}" \
             -t "${{ steps.meta.outputs.image_ref }}" \
             --push \
-            apps/oke-sample
+            repos/oke
 
       # Placeholder: rails db:migrate
       # Placeholder: rake task — grant readonly env permissions
@@ -84,14 +88,14 @@ jobs:
         run: |
           # The oke worker images use redis:7-alpine as the base in the manifests.
           # In production we'd swap the placeholder image name for the real one.
-          ( cd tenants/oke/overlays/autopilot && kustomize edit set image \
+          ( cd repos/gke-argocd/tenants/oke/overlays/autopilot && kustomize edit set image \
             "redis=${{ needs.build-push.outputs.image_ref }}" )
 
       - name: Commit + push manifest change
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tenants/oke/overlays/
+          git add repos/gke-argocd/tenants/oke/overlays/
           if git diff --cached --quiet; then
             echo "No manifest changes — image tag was already current."
             exit 0

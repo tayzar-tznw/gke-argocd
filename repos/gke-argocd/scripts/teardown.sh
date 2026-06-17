@@ -5,8 +5,9 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${ROOT_DIR}/infra/terraform"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+TF_DIR="${REPO_ROOT}/repos/smarthr-terraform/environments/smarthr-gke-demo"
 
 PROJECT_ID="${PROJECT_ID:-smart-hr-demo-499522}"
 REGION="${REGION:-asia-northeast1}"

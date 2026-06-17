@@ -1,3 +1,11 @@
+# ========================================================================
+# ILLUSTRATIVE — does not execute in this demo.
+#
+# This is what the gke-argocd repo's PR validation looks like in real life:
+# every PR runs `kustomize build` on each overlay and validates the output
+# with kubeconform. Catches typos, schema mismatches, and broken refs before
+# they get into main (which is what ArgoCD reads).
+# ========================================================================
 name: validate
 
 on:
@@ -22,9 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           for overlay in \
-              repos/gke-argocd/tenants/hanica/overlays/autopilot \
-              repos/gke-argocd/tenants/oke/overlays/autopilot \
-              repos/gke-argocd/platform/cluster-bootstrap; do
+              tenants/hanica/overlays/autopilot \
+              tenants/oke/overlays/autopilot \
+              platform/cluster-bootstrap; do
             echo "==> Validating $overlay"
             kubectl kustomize "$overlay" | kubeconform \
               -strict \

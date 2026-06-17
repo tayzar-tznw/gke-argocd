@@ -1,0 +1,124 @@
+# ========================================================================
+# ILLUSTRATIVE — does not execute in this demo.
+#
+# This file shows what `hanica`'s CI workflow looks like when it lives in
+# its own separate GitHub repo (smarthr/hanica). GitHub Actions only runs
+# workflows from `.github/workflows/` at the *repo root*; this nested copy
+# is here for SmartHR engineers to read and copy into their own repo.
+#
+# The actually-running workflow for this demo is at the demo repo's root:
+#   .github/workflows/ci-hanica.yml
+# ========================================================================
+name: hanica-ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read         # only need to read this source repo
+  id-token: write        # mint a WIF token to talk to GCP
+
+env:
+  PROJECT_ID: smart-hr-demo-499522
+  REGION: asia-northeast1
+  AR_REPO: smarthr-demo
+  IMAGE_NAME: hanica
+  WIF_PROVIDER: projects/87614275791/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+  GCP_SA: gh-actions-deployer@smart-hr-demo-499522.iam.gserviceaccount.com
+  GITOPS_REPO: smarthr/gke-argocd
+  GITOPS_OVERLAY_PATH: tenants/hanica/overlays/autopilot
+
+jobs:
+  build-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Placeholder for the real Rails pipeline.
+      # - uses: ruby/setup-ruby@v1
+      #   with: { ruby-version: '3.3', bundler-cache: true }
+      # - run: |
+      #     corepack enable
+      #     pnpm install --frozen-lockfile
+      #     pnpm run build
+
+      - id: meta
+        name: Compute image tag
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          TAG="${SHA}-${TS}"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Docker auth to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build + push image
+        run: |
+          docker buildx build \
+            --build-arg BUILD_SHA="${GITHUB_SHA::12}" \
+            --build-arg BUILD_TIME="$(date -u +%FT%TZ)" \
+            -t "${{ steps.meta.outputs.image_ref }}" \
+            --push \
+            .
+
+      # Placeholder: rake db:migrate via a Kubernetes Job
+      # Placeholder: upload assets to GCS
+
+  open-bump-pr:
+    name: Open image-bump PR in gke-argocd
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - name: Checkout the GitOps repo (NOT this repo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          # GITOPS_PAT must be a fine-grained PAT (or GitHub App token) with
+          # contents:write + pull-requests:write on the gke-argocd repo only.
+          # Store as a repo secret in smarthr/hanica.
+          token: ${{ secrets.GITOPS_PAT }}
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz \
+            | tar -xz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/
+
+      - name: Bump image tag
+        run: |
+          ( cd "${{ env.GITOPS_OVERLAY_PATH }}" && kustomize edit set image \
+            nginxinc/nginx-unprivileged=${{ needs.build-push.outputs.image_ref }} )
+
+      - name: Open PR with the bump
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITOPS_PAT }}
+          commit-message: "deploy(hanica): bump image to ${{ needs.build-push.outputs.image_tag }}"
+          title: "deploy(hanica): ${{ needs.build-push.outputs.image_tag }}"
+          body: |
+            Automated image-tag bump from `smarthr/hanica` @ ${{ github.sha }}.
+
+            **Image**: `${{ needs.build-push.outputs.image_ref }}`
+
+            This PR IS the deploy approval gate. Merge to deploy.
+          branch: deploy/hanica/${{ needs.build-push.outputs.image_tag }}
+          labels: deploy,hanica
+
+      # Optional: post-deploy steps when the PR merges (e.g. Apollo Federation
+      # schema deploy, Slack notification) would live in a workflow on the
+      # gke-argocd repo, listening for the deploy/hanica/* branch merge.
